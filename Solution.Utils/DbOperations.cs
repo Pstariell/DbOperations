@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
+using System.Dynamic;
 using Microsoft.Data.SqlClient;
 using System.Linq;
 using System.Linq.Expressions;
@@ -351,14 +353,16 @@ namespace Solution.Utils
                     bulkCopy.WriteToServer(dataReader);
                 }
 
-                bulkCopy.Close();
+                //bulkCopy.Close();
             }
         }
+
         public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(this DbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
             opts.Connection = connection;
             action(opts);
+
 
             if (opts.Connection.State == ConnectionState.Closed) opts.Connection.Open();
 
@@ -458,17 +462,263 @@ namespace Solution.Utils
 
         #endregion
 
+        #region BulkUpdate
+        public static DbConnection BulkUpdate<TContext, TSource>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        {
+            var opts = new BulkUpdateOptions<TSource>();
+            action(opts);
+
+            using (DbConnection conn = context.Connection)
+            {
+                if (conn.State == ConnectionState.Closed) conn.Open();
+                DbTransaction trans = conn.BeginTransaction();
+                try
+                {
+                    BulkUpdate<TSource>(data, opts);
+                    trans.Commit();
+                }
+                catch (Exception)
+                {
+                    trans.Rollback();
+                    throw;
+                }
+            }
+            return context.Connection;
+        }
+
+        public static void BulkUpdate<TSource>(this DbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        {
+            var opts = new BulkUpdateOptions<TSource>();
+            opts.Connection = conn;
+            action(opts);
+
+            if (opts.Connection.State == ConnectionState.Closed) opts.Connection.Open();
+            bool internalTransaction = false;
+            if (opts.Transaction == null)
+            {
+                opts.Transaction = opts.Connection.BeginTransaction();
+                internalTransaction = true;
+            }
+
+            try
+            {
+                BulkUpdate(data, opts);
+                if (internalTransaction) opts.Transaction.Commit();
+            }
+            catch (Exception)
+            {
+                if (internalTransaction) opts.Transaction.Rollback();
+                throw;
+            }
+        }
+        public static void BulkUpdate<TSource>(IEnumerable<TSource> data, IBulkUpdateOptions<TSource> options)
+        {
+            string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
+            string joinParams = "";
+
+
+
+            if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
+            bool internalTransaction = false;
+
+            if (options.Transaction == null)
+            {
+                internalTransaction = true;
+                options.Transaction = options.Connection.BeginTransaction();
+            }
+
+            BulkInsert(data, new BulkInsertOptions<TSource>()
+            {
+                Connection = options.Connection,
+                Transaction = options.Transaction,
+                tableName = tempTable,
+                primaryKeys = options.joinColumns,
+                includeColumns = options.includeColumns,
+                excludeColumns = options.excludeColumns,
+                dropTableIfExist = true,
+                createTableIfNotExist = true,
+                excludeprimaryKeys = options.excludeprimaryKeys
+            });
+
+
+
+            var fieldsCreate = GetProperties<TSource>(options.joinColumns, null, null, null);
+            joinParams = string.Join(" AND ", fieldsCreate.OrderBy(p => p.Order).Where(p => p.IsPrimaryKey).Select(s => $" [ExtendedRes].{s.Name} = [ExtendedTemp].{s.Name}"));
+
+            if (string.IsNullOrEmpty(joinParams))
+            {
+                throw new Exception("Nessuna chiave di confronto impostata,la tabella non ha una PrimaryKey, popolare il metodo 'joinColumns'");
+            }
+
+            var fieldsUpdatelist = GetFields(options.fieldsToUpdate);
+            var fieldsUpdate = "";
+            if (fieldsUpdatelist.Any())
+            {
+                fieldsUpdate = string.Join(" , ", fieldsUpdatelist.Select(s => $" {s} = [ExtendedTemp].{s}"));
+            }
+
+            string query = $"UPDATE [ExtendedRes] " +
+                           $" SET {fieldsUpdate} " +
+                           $" FROM [{tempTable}] as [ExtendedTemp] " +
+                           $" INNER JOIN [{options.tableName}] as [ExtendedRes] on {joinParams} {options.joinSql} " +
+                           $"{(!string.IsNullOrEmpty(options.otherSqlWhereCondition) ? " WHERE " + options.otherSqlWhereCondition : "")}; " +
+                           $"DROP TABLE [{tempTable}];";
+
+            ExecuteCommand(options, query);
+        }
+
+        public static IEnumerable<TRes> BulkUpdateWithResult<TContext, TSource, TRes>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        {
+            var opts = new BulkUpdateOptions<TSource>();
+            action(opts);
+            IEnumerable<TRes> result = new List<TRes>();
+            using (DbConnection conn = context.Connection)
+            {
+                if (conn.State == ConnectionState.Closed) conn.Open();
+                DbTransaction trans = conn.BeginTransaction();
+                try
+                {
+                    result = BulkUpdateWithResult<TSource, TRes>(data, opts);
+                    trans.Commit();
+                }
+                catch (Exception)
+                {
+                    trans.Rollback();
+                    throw;
+                }
+            }
+            return result;
+        }
+
+        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(this DbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        {
+            var opts = new BulkUpdateOptions<TSource>();
+            opts.Connection = conn;
+
+            action(opts);
+            IEnumerable<TRes> result = new List<TRes>();
+            if (opts.Connection.State == ConnectionState.Closed) opts.Connection.Open();
+
+            bool internalTransaction = false;
+            if (opts.Transaction == null)
+            {
+                opts.Transaction = opts.Connection.BeginTransaction();
+                internalTransaction = true;
+            }
+
+            try
+            {
+                result = BulkUpdateWithResult<TSource, TRes>(data, opts);
+                if (internalTransaction) opts.Transaction.Commit();
+                return result;
+            }
+            catch (Exception)
+            {
+                if (internalTransaction) opts.Transaction.Rollback();
+                throw;
+            }
+        }
+        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(IEnumerable<TSource> data, IBulkUpdateOptions<TSource> options)
+        {
+            string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
+            string joinParams = "";
+
+
+
+            if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
+            bool internalTransaction = false;
+
+            if (options.Transaction == null)
+            {
+                internalTransaction = true;
+                options.Transaction = options.Connection.BeginTransaction();
+            }
+
+            CreateTable<TSource>(opt =>
+            {
+                opt.Connection = options.Connection;
+                opt.Transaction = options.Transaction;
+                opt.tableName = tempTable;
+                opt.primaryKey = options.joinColumns;
+                opt.excludeColumns = options.excludeColumns;
+                opt.includeColumns = options.includeColumns;
+                opt.dropIfExists = true;
+                opt.primaryKeyAutoIncrement = false;
+            });
+
+            BulkInsert(data, new BulkInsertOptions<TSource>()
+            {
+                Connection = options.Connection,
+                Transaction = options.Transaction,
+                tableName = tempTable,
+                primaryKeys = options.joinColumns,
+                includeColumns = options.includeColumns,
+                excludeColumns = options.excludeColumns,
+                dropTableIfExist = false,
+                createTableIfNotExist = false,
+                excludeprimaryKeys = options.excludeprimaryKeys
+            });
+
+            var fieldsCreate = GetProperties<TSource>(options.joinColumns, null, null, null);
+            joinParams = string.Join(" AND ", fieldsCreate.OrderBy(p => p.Order).Where(p => p.IsPrimaryKey).Select(s => $" [ExtendedRes].{s.Name} = [ExtendedTemp].{s.Name}"));
+
+            if (string.IsNullOrEmpty(joinParams))
+            {
+                throw new Exception("Nessuna chiave di confronto impostata,la tabella non ha una PrimaryKey, popolare il metodo 'joinColumns'");
+            }
+
+            var fieldsUpdatelist = GetFields(options.fieldsToUpdate);
+            var fieldsUpdate = "";
+            if (fieldsUpdatelist.Any())
+            {
+                fieldsUpdate = string.Join(" , ", fieldsUpdatelist.Select(s => $" {s} = [ExtendedTemp].{s}"));
+            }
+
+            var props = GetProperties(options.primaryKeys, options.includeColumns, options.excludeColumns);
+            var pk = props.Where(p => p.IsPrimaryKey);
+            var joinProps = GetProperties(options.joinColumns);
+            var columns = props.Where(p => !p.IsPrimaryKey)
+                .Select(s => s.Name);
+
+            if (!pk.Any())
+            {
+                throw new ArgumentNullException(nameof(options.primaryKeys));
+            }
+
+            string pkCreateStr = string.Join(",", pk.Select(s => $"{s.Name} {s.TypeSql} NOT NULL "));
+            string pkStr = string.Join(",", pk.Select(s => $"{s.Name}"));
+            string pkStrFromInserted = string.Join(",", pk.Select(s => $" INSERTED.{s.Name} "));
+            string joinField = string.Join(" AND ", pk.Select(s => $" tp.{s.Name} = tr.{s.Name} "));
+
+            string query = $"DECLARE @tmpTbl as TABLE(intID bigint not null identity(1,1), {pkCreateStr} ); " +
+                           $"UPDATE [ExtendedRes] " +
+                           $" SET {fieldsUpdate} " +
+                           $" OUTPUT {pkStrFromInserted} INTO @tmpTbl({pkStr}) " +
+                           $" FROM [{tempTable}] as [ExtendedTemp] " +
+                           $" INNER JOIN [{options.tableName}] as [ExtendedRes] on {joinParams} {options.joinSql} " +
+                           $" {(!string.IsNullOrEmpty(options.otherSqlWhereCondition) ? " WHERE " + options.otherSqlWhereCondition : "")}; " +
+                           $" SELECT tr.* FROM {options.tableName} tr " +
+                           $" JOIN @tmpTbl tp on {joinField}; " +
+                           $" DROP TABLE [{tempTable}];";
+
+            return ExecuteCommand<TRes>(options, query);
+        }
+
+        #endregion
+
         #region Private Methods
 
         private static List<Property> GetProperties<TSource>(
-            Expression<Func<TSource, object>> primaryKeys = null,
-            Expression<Func<TSource, object>> includeColumns = null,
-            Expression<Func<TSource, object>> excludeColumns = null
+        Expression<Func<TSource, object>> primaryKeys = null,
+        Expression<Func<TSource, object>> includeColumns = null,
+        Expression<Func<TSource, object>> excludeColumns = null,
+        Expression<Func<TSource, object>> excludePrimaryKeys = null
             )
         {
             List<string> primaryKeysFields = new List<string>();
             List<string> excludeFields = new List<string>();
             List<string> includeFields = new List<string>();
+            List<string> exludeprimaryKeysFields = new List<string>();
             if (primaryKeys != null)
             {
                 primaryKeysFields = GetFields<TSource>(primaryKeys).ToList();
@@ -482,6 +732,10 @@ namespace Solution.Utils
             if (excludeColumns != null)
             {
                 excludeFields = GetFields<TSource>(excludeColumns).ToList();
+            }
+            if (excludePrimaryKeys != null)
+            {
+                exludeprimaryKeysFields = GetFields<TSource>(excludePrimaryKeys).ToList();
             }
 
             List<Property> fieldsCreate = new List<Property>();
@@ -499,15 +753,15 @@ namespace Solution.Utils
                 //Skip Fields non contenute
                 if (excludeColumns != null || includeColumns != null || primaryKeysFields != null)
                 {
-                    if (primaryKeysFields.Any() && primaryKeysFields.Contains(fieldinfo.Name))
+                    if (excludeFields.Any() && !excludeFields.Contains(fieldinfo.Name)) continue;
+                    else if (includeFields.Any() && !includeFields.Contains(fieldinfo.Name)) continue;
+                    else if (primaryKeysFields.Any() && primaryKeysFields.Contains(fieldinfo.Name) && !exludeprimaryKeysFields.Contains(fieldinfo.Name))
                     {
                         pk = true;
                         order = indexPK;
                         indexPK += 1;
                         skipPK = true;
-                    }
-                    else if (excludeFields.Any() && excludeFields.Contains(fieldinfo.Name)) continue;
-                    else if (includeFields.Any() && !includeFields.Contains(fieldinfo.Name)) continue;
+                    };
                 }
 
                 //PrimaryKey Attribute 
@@ -527,7 +781,7 @@ namespace Solution.Utils
                     fieldInfo = fieldinfo,
                     Name = fieldinfo.Name,
                     TypeSql = tp,
-                    IsNullable = (fieldinfo.GetGetMethod().ReturnType.Name.ToLower() == "string" || IsNullable(fieldinfo.GetType()) || IsNullable(fieldinfo.GetGetMethod().ReturnType)) && !pk,
+                    IsNullable = GetAttributeFrom<NullableAttribute>(fieldinfo, fieldinfo.Name).FirstOrDefault() != null || (fieldinfo.GetGetMethod().ReturnType.Name.ToLower() == "string" || IsNullable(fieldinfo.GetType()) || IsNullable(fieldinfo.GetGetMethod().ReturnType)) && !pk,
                     IsPrimaryKey = pk,
                     Order = order
                 });
@@ -572,6 +826,8 @@ namespace Solution.Utils
 
             return fields;
         }
+
+        public class NullableAttribute : Attribute { }
 
         private static string GetTypeSqlType(Type t)
         {
