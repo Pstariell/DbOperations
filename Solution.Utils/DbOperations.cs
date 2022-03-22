@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -81,40 +81,40 @@ namespace Solution.Utils
                     });
                 }
 
-                    //Creating temp table on database
-                    string pks = string.Join(",", fieldsCreate.OrderBy(p => p.Order).Where(p => p.IsPrimaryKey).Select(s => s.Name));
+                //Creating temp table on database
+                string pks = string.Join(",", fieldsCreate.OrderBy(p => p.Order).Where(p => p.IsPrimaryKey).Select(s => s.Name));
 
-                    contentCreate.AddRange(fieldsCreate.Select(e =>
-                    {
-                        string name = e.Name;
-                        string typeSql = e.TypeSql;
-                        string autoIncrement = ((options.primaryKeyAutoIncrement
-                                                 && (e.TypeSql.ToLower() == "int" || e.TypeSql.ToLower() == "bigint"))
-                                ? "INDENTITY(1,1)"
-                                : "");
-                        string isNullable = (e.IsNullable ? "NULL" : "NOT NULL");
+                contentCreate.AddRange(fieldsCreate.Select(e =>
+                {
+                    string name = e.Name;
+                    string typeSql = e.TypeSql;
+                    string autoIncrement = ((options.primaryKeyAutoIncrement
+                                             && (e.TypeSql.ToLower() == "int" || e.TypeSql.ToLower() == "bigint"))
+                            ? "IDENTITY(1,1)"
+                            : "");
+                    string isNullable = (e.IsNullable ? "NULL" : "NOT NULL");
 
-                        return $"[{name}] {typeSql} {autoIncrement} {isNullable}";
-                    }));
+                    return $"[{name}] {typeSql} {autoIncrement} {isNullable}";
+                }));
 
                 //UNIQUEIDENTIFIER And primaryKeyAutoIncrement And is Primary   
-                string[] constraint = fieldsCreate.Where(p => options.primaryKeyAutoIncrement && p.IsPrimaryKey  && p.TypeSql == "UNIQUEIDENTIFIER").Select(s =>
-                    {
-                        return
-                            $"ALTER TABLE [{options.tableName}] ADD  CONSTRAINT [DF_{options.tableName}_{s.Name}]  DEFAULT (newsequentialid()) FOR [{s.Name}];";
-                    }).ToArray();
+                string[] constraint = fieldsCreate.Where(p => options.primaryKeyAutoIncrement && p.IsPrimaryKey && p.TypeSql == "UNIQUEIDENTIFIER").Select(s =>
+                   {
+                       return
+                           $"ALTER TABLE [{options.tableName}] ADD  CONSTRAINT [DF_{options.tableName}_{s.Name}]  DEFAULT (newsequentialid()) FOR [{s.Name}];";
+                   }).ToArray();
 
-                    if (!string.IsNullOrEmpty(pks))
-                    {
-                        contentCreate.Add($" PRIMARY KEY({pks})");
-                    }
+                if (!string.IsNullOrEmpty(pks))
+                {
+                    contentCreate.Add($" PRIMARY KEY({pks})");
+                }
 
-                    string commandCreate = $"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'{options.tableName}')" +
-                                           $" CREATE TABLE [{options.tableName}] ({string.Join(", ", contentCreate)}); {string.Join(",", constraint)}";
+                string commandCreate = $"IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'{options.tableName}')" +
+                                       $" CREATE TABLE [{options.tableName}] ({string.Join(", ", contentCreate)}); {string.Join(",", constraint)}";
 
-                    ExecuteCommand(options, commandCreate);
+                ExecuteCommand(options, commandCreate);
 
-                    if (internalTransaction) options.Transaction.Commit();
+                if (internalTransaction) options.Transaction.Commit();
             }
             catch (Exception e)
             {
@@ -173,6 +173,65 @@ namespace Solution.Utils
                     cmd.Transaction = options.Transaction;
                     cmd.CommandText = command;
                     cmd.ExecuteNonQuery();
+                }
+
+                if (internalTransaction)
+                {
+                    options.Transaction.Commit();
+                }
+            }
+            catch (Exception e)
+            {
+                if (internalTransaction)
+                {
+                    options.Transaction.Rollback();
+                }
+
+                throw;
+            }
+        }
+
+        private static List<T> DataReaderMapToList<T>(IDataReader dr)
+        {
+            List<T> list = new List<T>();
+            T obj = default(T);
+            while (dr.Read())
+            {
+                obj = Activator.CreateInstance<T>();
+                foreach (PropertyInfo prop in obj.GetType().GetProperties())
+                {
+                    if (!object.Equals(dr[prop.Name], DBNull.Value))
+                    {
+                        prop.SetValue(obj, dr[prop.Name], null);
+                    }
+                }
+                list.Add(obj);
+            }
+            return list;
+        }
+
+        private static IEnumerable<T> ExecuteCommand<T>(IDbOperationOptions options, string command)
+        {
+            if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
+
+            bool internalTransaction = false;
+            if (options.Transaction == null)
+            {
+                internalTransaction = true;
+                options.Transaction = options.Connection.BeginTransaction();
+            }
+
+            try
+            {
+                using (DbCommand cmd = options.Connection.CreateCommand())
+                {
+                    cmd.Connection = options.Connection;
+                    cmd.Transaction = options.Transaction;
+                    cmd.CommandText = command;
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        return DataReaderMapToList<T>(reader);
+                    }
                 }
 
                 if (internalTransaction)
@@ -270,14 +329,17 @@ namespace Solution.Utils
             {
                 CreateTable<TSource>(opt =>
                 {
+                    opt.tableName = options.tableName;
                     opt.primaryKey = options.primaryKeys;
                     opt.excludeColumns = options.excludeColumns;
                     opt.includeColumns = options.includeColumns;
                     opt.dropIfExists = options.dropTableIfExist;
+                    opt.Connection = options.Connection;
+                    opt.Transaction = options.Transaction;
                 });
             }
 
-            using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
+            using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as Microsoft.Data.SqlClient.SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
             {
                 bulkCopy.DestinationTableName = $"{options.tableName}";
                 bulkCopy.BulkCopyTimeout = options.ConnectionTimeout;
@@ -292,18 +354,106 @@ namespace Solution.Utils
                 bulkCopy.Close();
             }
         }
+        public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(this DbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        {
+            var opts = new BulkInsertOptions<TSource>();
+            opts.Connection = connection;
+            action(opts);
 
-        public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
+            if (opts.Connection.State == ConnectionState.Closed) opts.Connection.Open();
+
+            bool internalTransaction = false;
+            if (opts.Transaction == null)
+            {
+                opts.Transaction = opts.Connection.BeginTransaction();
+                internalTransaction = true;
+            }
+
+            IEnumerable<TSource> result;
+            try
+            {
+                result = BulkInsertWithReturn<TSource>(data, opts);
+                if (internalTransaction) opts.Transaction.Commit();
+                return result;
+            }
+            catch (Exception)
+            {
+                if (internalTransaction) opts.Transaction.Rollback();
+                throw;
+            }
+        }
+
+        private static IEnumerable<TSource> BulkInsertWithReturn<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
         {
             //Bulk in Temp Table
-            string table = options.tableName;
-            options.tableName = $"{table}_{DateTime.Now:yyyyMMddHHmmss}";
-            BulkInsert(data, options);
+            string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
+
+            BulkInsert(data, new BulkInsertOptions<TSource>()
+            {
+                tableName = tempTable,
+                createTableIfNotExist = true,
+                dropTableIfExist = true,
+                Connection = options.Connection,
+                Transaction = options.Transaction,
+                includeColumns = options.includeColumns,
+                excludeColumns = options.excludeColumns,
+                ConnectionTimeout = options.ConnectionTimeout,
+                primaryKeys = null
+            });
+
+
+            if (options.dropTableIfExist)
+            {
+                DropTable<TSource>(opt =>
+                {
+                    opt.useIfExist = options.dropTableIfExist;
+                    opt.tableName = options.tableName;
+                    opt.Connection = options.Connection;
+                    opt.Transaction = options.Transaction;
+                });
+            }
+
+            if (options.createTableIfNotExist)
+            {
+                CreateTable<TSource>(opt =>
+                {
+                    opt.tableName = options.tableName;
+                    opt.primaryKey = options.primaryKeys;
+                    opt.excludeColumns = options.excludeColumns;
+                    opt.includeColumns = options.includeColumns;
+                    opt.dropIfExists = options.dropTableIfExist;
+                    opt.Connection = options.Connection;
+                    opt.Transaction = options.Transaction;
+                });
+            }
 
             //Bulk to Real Table
+            var props = GetProperties(options.primaryKeys, options.includeColumns, options.excludeColumns);
+            var pk = props.Where(p => p.IsPrimaryKey);
+            var columns = props.Where(p => !p.IsPrimaryKey)
+                .Select(s => s.Name);
 
+            if (!pk.Any())
+            {
+                throw new ArgumentNullException(nameof(options.primaryKeys));
+            }
 
-            throw new NotImplementedException();
+            string pkCreateStr = string.Join(",", pk.Select(s => $"{s.Name} {s.TypeSql} NOT NULL "));
+            string pkStr = string.Join(",", pk.Select(s => $"{s.Name}"));
+            string pkStrFromInserted = string.Join(",", pk.Select(s => $" INSERTED.{s.Name} "));
+            string joinField = string.Join(" AND ", pk.Select(s => $" tp.{s.Name} = tr.{s.Name} "));
+            string columnsStr = string.Join(", ", columns);
+
+            string sql = $" DECLARE @tmpTbl as TABLE(intID bigint not null identity(1,1), {pkCreateStr} ); " +
+                         $"INSERT [{options.tableName}] " +
+                         $"({columnsStr}) " +
+                         $"OUTPUT {pkStrFromInserted} INTO @tmpTbl({pkStr}) " +
+                         $"SELECT {columnsStr} FROM {tempTable}; " +
+                         $"SELECT tr.* FROM {options.tableName} tr " +
+                         $" JOIN @tmpTbl tp on {joinField}; " +
+                         $"DROP TABLE {tempTable} ;";
+
+            return ExecuteCommand<TSource>(options, sql);
         }
 
         #endregion
@@ -475,9 +625,9 @@ namespace Solution.Utils
         {
             return (nullableType.IsGenericType
                     && !nullableType.IsGenericTypeDefinition
-                    && (object) nullableType.GetGenericTypeDefinition() == (object) typeof(Nullable<>)
+                    && (object)nullableType.GetGenericTypeDefinition() == (object)typeof(Nullable<>)
                 ? nullableType.GetGenericArguments()[0]
-                : (Type) null);
+                : (Type)null);
         }
 
 
