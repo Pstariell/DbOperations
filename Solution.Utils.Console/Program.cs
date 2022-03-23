@@ -30,7 +30,6 @@ namespace Solution.Utils.Console
     {
         static void Main(string[] args)
         {
-
             using (var db = new Database<TextContext>())
             {
                 //db.Connection.CreateTable<entityToCreate>(opt =>

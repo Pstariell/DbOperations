@@ -17,7 +17,9 @@ namespace Solution.Utils.Model
         public Expression<Func<TSource, object>> excludeprimaryKeys { get; set; }
         public Expression<Func<TSource, object>> includeColumns { get; set; }
         public Expression<Func<TSource, object>> excludeColumns { get; set; }
+        public Expression<Func<TSource, object>> excludePrimaryKeyColumns { get; set; }
         public bool dropTableIfExist { get; set; }
         public bool createTableIfNotExist { get; set; }
+        public bool primaryKeyAutoIncrement { get; set; }
     }
 }

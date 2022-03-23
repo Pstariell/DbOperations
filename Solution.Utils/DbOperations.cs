@@ -67,7 +67,7 @@ namespace Solution.Utils
             }
 
             List<string> contentCreate = new List<string>();
-            var fieldsCreate = GetProperties<TSource>(options.primaryKey, options.includeColumns, options.excludeColumns);
+            var fieldsCreate = GetProperties<TSource>(options.primaryKey, options.includeColumns, options.excludeColumns, options.excludePrimaryKeyColumns);
 
             try
             {
@@ -336,6 +336,7 @@ namespace Solution.Utils
                     opt.excludeColumns = options.excludeColumns;
                     opt.includeColumns = options.includeColumns;
                     opt.dropIfExists = options.dropTableIfExist;
+                    opt.excludePrimaryKeyColumns = options.excludePrimaryKeyColumns;
                     opt.Connection = options.Connection;
                     opt.Transaction = options.Transaction;
                 });

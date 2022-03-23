@@ -23,6 +23,7 @@ namespace Solution.Utils.Model
         public Expression<Func<TSource, object>> primaryKey { get; set; } = null;
         public Expression<Func<TSource, object>> includeColumns { get; set; } = null;
         public Expression<Func<TSource, object>> excludeColumns { get; set; } = null;
+        public Expression<Func<TSource, object>> excludePrimaryKeyColumns { get; set; }
         public bool createTableIfNotExist { get; set; }
         public bool primaryKeyAutoIncrement { get; set; }
         public DbConnection Connection { get; set; } = null;
