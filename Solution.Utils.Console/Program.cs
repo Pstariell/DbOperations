@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Solution.Utils.DbOperations;
 using Solution.Utils.Net5;
 
 namespace Solution.Utils.Console

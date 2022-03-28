@@ -3,23 +3,24 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
-using System.Data.Common;
 using System.Dynamic;
-using Microsoft.Data.SqlClient;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using Microsoft.Data.SqlClient;
+using Solution.Utils;
 using Solution.Utils.Infrastracture;
 using Solution.Utils.Model;
 
-namespace Solution.Utils
+
+namespace Solution.Utils.DbOperations
 {
     public static class DbOperations
     {
         #region Create Table
 
-        public static DbConnection CreateTable<TSource>(this DbConnection connection,
+        public static IDbConnection CreateTable<TSource>(this IDbConnection connection,
             Action<ICreateTableOptions<TSource>> options)
         {
             var opts = new CreateTableOptions<TSource>(connection);
@@ -34,7 +35,7 @@ namespace Solution.Utils
             var opts = new CreateTableOptions<TSource>(context.Connection);
             options(opts);
 
-            using (DbConnection conn = opts.Connection)
+            using (IDbConnection conn = opts.Connection)
             {
                 CreateTable(opts);
                 return context;
@@ -48,7 +49,7 @@ namespace Solution.Utils
             CreateTable(opts);
         }
 
-        public static void CreateTable<TSource>(this DbConnection connection, ICreateTableOptions<TSource> options)
+        public static void CreateTable<TSource>(this IDbConnection connection, ICreateTableOptions<TSource> options)
         {
             options.Connection = connection;
             CreateTable(options);
@@ -58,6 +59,11 @@ namespace Solution.Utils
 
         public static void CreateTable<TSource>(ICreateTableOptions<TSource> options)
         {
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
+
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
             bool internalTransaction = false;
             if (options.dropIfExists && options.Transaction == null)
@@ -74,7 +80,7 @@ namespace Solution.Utils
                 //Drop Table If Exist
                 if (options.dropIfExists)
                 {
-                    DropTable<TSource>(opts =>
+                    DropTable(opts =>
                     {
                         opts.tableName = options.tableName;
                         opts.Connection = options.Connection;
@@ -101,10 +107,10 @@ namespace Solution.Utils
 
                 //UNIQUEIDENTIFIER And primaryKeyAutoIncrement And is Primary   
                 string[] constraint = fieldsCreate.Where(p => options.primaryKeyAutoIncrement && p.IsPrimaryKey && p.TypeSql == "UNIQUEIDENTIFIER").Select(s =>
-                   {
-                       return
-                           $"ALTER TABLE [{options.tableName}] ADD  CONSTRAINT [DF_{options.tableName}_{s.Name}]  DEFAULT (newsequentialid()) FOR [{s.Name}];";
-                   }).ToArray();
+                {
+                    return
+                        $"ALTER TABLE [{options.tableName}] ADD  CONSTRAINT [DF_{options.tableName}_{s.Name}]  DEFAULT (newsequentialid()) FOR [{s.Name}];";
+                }).ToArray();
 
                 if (!string.IsNullOrEmpty(pks))
                 {
@@ -129,9 +135,9 @@ namespace Solution.Utils
 
         #region  Drop Table
 
-        public static void DropTable<TContext, TSource>(this IDatabase<TContext> context, Action<IDropTableOptions<TSource>> action)
+        public static void DropTable<TContext, TSource>(this IDatabase<TContext> context, Action<IDropTableOptions> action)
         {
-            var options = new DropTableOptions<TSource>();
+            var options = new DropTableOptions();
             action(options);
 
             using (var conn = context.Connection)
@@ -141,15 +147,29 @@ namespace Solution.Utils
             }
         }
 
-        public static void DropTable<TSource>(Action<IDropTableOptions<TSource>> action)
+        public static void DropTable(this IDbConnection connection, Action<IDropTableOptions> action)
         {
-            var options = new DropTableOptions<TSource>();
+            var options = new DropTableOptions();
+            options.Connection = connection;
             action(options);
             DropTable(options);
         }
 
-        public static void DropTable<TSource>(IDropTableOptions<TSource> options)
+
+        public static void DropTable(Action<IDropTableOptions> action)
         {
+            var options = new DropTableOptions();
+            action(options);
+            DropTable(options);
+        }
+
+        public static void DropTable(IDropTableOptions options)
+        {
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
+
             string command = (options.useIfExist ? $"IF OBJECT_ID(N'{options.tableName}', N'U') IS NOT NULL" : "") +
                              $" DROP TABLE [{options.tableName}];";
 
@@ -169,7 +189,7 @@ namespace Solution.Utils
 
             try
             {
-                using (DbCommand cmd = options.Connection.CreateCommand())
+                using (IDbCommand cmd = options.Connection.CreateCommand())
                 {
                     cmd.Connection = options.Connection;
                     cmd.Transaction = options.Transaction;
@@ -214,6 +234,7 @@ namespace Solution.Utils
 
         private static IEnumerable<T> ExecuteCommand<T>(IDbOperationOptions options, string command)
         {
+            var result = new List<T>();
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
 
             bool internalTransaction = false;
@@ -225,14 +246,14 @@ namespace Solution.Utils
 
             try
             {
-                using (DbCommand cmd = options.Connection.CreateCommand())
+                using (IDbCommand cmd = options.Connection.CreateCommand())
                 {
                     cmd.Connection = options.Connection;
                     cmd.Transaction = options.Transaction;
                     cmd.CommandText = command;
                     using (var reader = cmd.ExecuteReader())
                     {
-                        return DataReaderMapToList<T>(reader);
+                        result = DataReaderMapToList<T>(reader);
                     }
                 }
 
@@ -240,6 +261,8 @@ namespace Solution.Utils
                 {
                     options.Transaction.Commit();
                 }
+
+                return result;
             }
             catch (Exception e)
             {
@@ -255,15 +278,16 @@ namespace Solution.Utils
         #endregion
 
         #region BulkInsert
-        public static DbConnection BulkInsert<TContext, TSource>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        public static IDbConnection BulkInsert<TContext, TSource>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
             action(opts);
 
-            using (DbConnection conn = context.Connection)
+
+            using (IDbConnection conn = context.Connection)
             {
                 if (conn.State == ConnectionState.Closed) conn.Open();
-                DbTransaction trans = conn.BeginTransaction();
+                IDbTransaction trans = conn.BeginTransaction();
                 try
                 {
                     BulkInsert<TSource>(data, opts);
@@ -278,7 +302,7 @@ namespace Solution.Utils
             return context.Connection;
         }
 
-        public static void BulkInsert<TSource>(this DbConnection conn, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        public static void BulkInsert<TSource>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
             opts.Connection = conn;
@@ -305,6 +329,11 @@ namespace Solution.Utils
 
         public static void BulkInsert<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
         {
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
+
             var fieldsCreate = GetProperties<TSource>(options.primaryKeys, options.includeColumns, options.excludeColumns);
 
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
@@ -318,7 +347,7 @@ namespace Solution.Utils
 
             if (options.dropTableIfExist)
             {
-                DropTable<TSource>(opt =>
+                DropTable(opt =>
                 {
                     opt.useIfExist = options.dropTableIfExist;
                     opt.tableName = options.tableName;
@@ -342,7 +371,7 @@ namespace Solution.Utils
                 });
             }
 
-            using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as Microsoft.Data.SqlClient.SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
+            using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
             {
                 bulkCopy.DestinationTableName = $"{options.tableName}";
                 bulkCopy.BulkCopyTimeout = options.ConnectionTimeout;
@@ -358,7 +387,7 @@ namespace Solution.Utils
             }
         }
 
-        public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(this DbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(this IDbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
             opts.Connection = connection;
@@ -377,7 +406,7 @@ namespace Solution.Utils
             IEnumerable<TSource> result;
             try
             {
-                result = BulkInsertWithReturn<TSource>(data, opts);
+                result = BulkInsertWithResult<TSource>(data, opts);
                 if (internalTransaction) opts.Transaction.Commit();
                 return result;
             }
@@ -388,8 +417,13 @@ namespace Solution.Utils
             }
         }
 
-        private static IEnumerable<TSource> BulkInsertWithReturn<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
+        private static IEnumerable<TSource> BulkInsertWithResult<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
         {
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
+
             //Bulk in Temp Table
             string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
 
@@ -409,7 +443,7 @@ namespace Solution.Utils
 
             if (options.dropTableIfExist)
             {
-                DropTable<TSource>(opt =>
+                DropTable(opt =>
                 {
                     opt.useIfExist = options.dropTableIfExist;
                     opt.tableName = options.tableName;
@@ -464,15 +498,15 @@ namespace Solution.Utils
         #endregion
 
         #region BulkUpdate
-        public static DbConnection BulkUpdate<TContext, TSource>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        public static IDbConnection BulkUpdate<TContext, TSource>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
         {
             var opts = new BulkUpdateOptions<TSource>();
             action(opts);
 
-            using (DbConnection conn = context.Connection)
+            using (IDbConnection conn = context.Connection)
             {
                 if (conn.State == ConnectionState.Closed) conn.Open();
-                DbTransaction trans = conn.BeginTransaction();
+                IDbTransaction trans = conn.BeginTransaction();
                 try
                 {
                     BulkUpdate<TSource>(data, opts);
@@ -487,7 +521,7 @@ namespace Solution.Utils
             return context.Connection;
         }
 
-        public static void BulkUpdate<TSource>(this DbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        public static void BulkUpdate<TSource>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
         {
             var opts = new BulkUpdateOptions<TSource>();
             opts.Connection = conn;
@@ -517,7 +551,15 @@ namespace Solution.Utils
             string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
             string joinParams = "";
 
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
 
+            if (options.joinColumns == null)
+            {
+                throw new ArgumentNullException(nameof(options.joinColumns));
+            }
 
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
             bool internalTransaction = false;
@@ -572,11 +614,13 @@ namespace Solution.Utils
         {
             var opts = new BulkUpdateOptions<TSource>();
             action(opts);
+
+
             IEnumerable<TRes> result = new List<TRes>();
-            using (DbConnection conn = context.Connection)
+            using (IDbConnection conn = context.Connection)
             {
                 if (conn.State == ConnectionState.Closed) conn.Open();
-                DbTransaction trans = conn.BeginTransaction();
+                IDbTransaction trans = conn.BeginTransaction();
                 try
                 {
                     result = BulkUpdateWithResult<TSource, TRes>(data, opts);
@@ -591,7 +635,7 @@ namespace Solution.Utils
             return result;
         }
 
-        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(this DbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
         {
             var opts = new BulkUpdateOptions<TSource>();
             opts.Connection = conn;
@@ -624,7 +668,20 @@ namespace Solution.Utils
             string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
             string joinParams = "";
 
+            if (string.IsNullOrEmpty(options.tableName))
+            {
+                throw new ArgumentNullException(nameof(options.tableName));
+            }
 
+            if (options.joinColumns == null)
+            {
+                throw new ArgumentNullException(nameof(options.joinColumns));
+            }
+
+            if (options.primaryKeys == null)
+            {
+                throw new ArgumentNullException(nameof(options.primaryKeys));
+            }
 
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
             bool internalTransaction = false;
@@ -782,7 +839,7 @@ namespace Solution.Utils
                     fieldInfo = fieldinfo,
                     Name = fieldinfo.Name,
                     TypeSql = tp,
-                    IsNullable = GetAttributeFrom<NullableAttribute>(fieldinfo, fieldinfo.Name).FirstOrDefault() != null || (fieldinfo.GetGetMethod().ReturnType.Name.ToLower() == "string" || IsNullable(fieldinfo.GetType()) || IsNullable(fieldinfo.GetGetMethod().ReturnType)) && !pk,
+                    IsNullable = GetAttributeFrom<Nullable>(fieldinfo, fieldinfo.Name).FirstOrDefault() != null || (fieldinfo.GetGetMethod().ReturnType.Name.ToLower() == "string" || IsNullable(fieldinfo.GetType()) || IsNullable(fieldinfo.GetGetMethod().ReturnType)) && !pk,
                     IsPrimaryKey = pk,
                     Order = order
                 });
@@ -828,7 +885,7 @@ namespace Solution.Utils
             return fields;
         }
 
-        public class NullableAttribute : Attribute { }
+        public class Nullable : Attribute { }
 
         private static string GetTypeSqlType(Type t)
         {

@@ -1,17 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.Common;
 using System.Text;
 using Solution.Utils.Infrastracture;
 
 namespace Solution.Utils.Model
 {
-    public class DropTableOptions<TSource> : IDropTableOptions<TSource>
+    public class DropTableOptions : IDropTableOptions
     {
-        public DbConnection Connection { get; set; } = null;
-        public DbTransaction Transaction { get; set; } = null;
+        public IDbConnection Connection { get; set; } = null;
+        public IDbTransaction Transaction { get; set; } = null;
         public int ConnectionTimeout { get; set; } = 500000;
-        public string tableName { get; set; }
+        public string tableName { get; set; } = string.Empty;
         public bool useIfExist { get; set; } = false;
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.Common;
 using System.Data.Entity;
 using System.Text;
@@ -10,7 +11,7 @@ namespace Solution.Utils.Net4
     public class Database<TContext> : IDatabase<TContext> where TContext : DbContext, new()
     {
         private TContext _context = null;
-        public DbConnection Connection
+        public IDbConnection Connection
         {
             get
             {

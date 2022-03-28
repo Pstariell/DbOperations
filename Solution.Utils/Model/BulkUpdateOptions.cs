@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
 using System.Text;
@@ -9,19 +10,19 @@ namespace Solution.Utils.Model
 {
     public class BulkUpdateOptions<TSource> : IBulkUpdateOptions<TSource>
     {
-        public DbConnection Connection { get; set; }
-        public DbTransaction Transaction { get; set; }
+        public IDbConnection Connection { get; set; } = null;
+        public IDbTransaction Transaction { get; set; } = null;
         public int ConnectionTimeout { get; set; } = 500000;
-        public string tableName { get; set; }
-        public Expression<Func<TSource, object>> primaryKeys { get; set; }
-        public Expression<Func<TSource, object>> excludeprimaryKeys { get; set; }
-        public Expression<Func<TSource, object>> includeColumns { get; set; }
-        public Expression<Func<TSource, object>> excludeColumns { get; set; }
-        public Expression<Func<TSource, object>> fieldsToUpdate { get; set; }
-        public Expression<Func<TSource, object>> joinColumns { get; set; }
-        public bool dropTableIfExist { get; set; }
-        public bool createTableIfNotExist { get; set; }
-        public string otherSqlWhereCondition { get; set; }
-        public string joinSql { get; set; }
+        public string tableName { get; set; } = string.Empty;
+        public Expression<Func<TSource, object>> primaryKeys { get; set; } = null;
+        public Expression<Func<TSource, object>> excludeprimaryKeys { get; set; } = null;
+        public Expression<Func<TSource, object>> includeColumns { get; set; } = null;
+        public Expression<Func<TSource, object>> excludeColumns { get; set; } = null;
+        public Expression<Func<TSource, object>> fieldsToUpdate { get; set; } = null;
+        public Expression<Func<TSource, object>> joinColumns { get; set; } = null;
+        public bool dropTableIfExist { get; set; } = false;
+        public bool createTableIfNotExist { get; set; } = false;
+        public string otherSqlWhereCondition { get; set; } = null;
+        public string joinSql { get; set; } = null;
     }
 }
