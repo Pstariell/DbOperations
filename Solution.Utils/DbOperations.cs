@@ -140,7 +140,7 @@ namespace Solution.Utils.DbOperations
 
         #region  Drop Table
 
-        public static void DropTable<TContext, TSource>(this IDatabase<TContext> context, Action<IDropTableOptions> action)
+        public static void DropTable<TContext>(this IDatabase<TContext> context, Action<IDropTableOptions> action)
         {
             var options = new DropTableOptions();
             action(options);
@@ -393,7 +393,7 @@ namespace Solution.Utils.DbOperations
             }
         }
 
-        public static IEnumerable<TSource> BulkInsertWithReturn<TSource>(this IDbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        public static IEnumerable<TSource> BulkInsertWithResult<TSource>(this IDbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
             opts.Connection = connection;
