@@ -3,15 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31005.135
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils", "Solution.Utils\Solution.Utils.csproj", "{C4671495-8C95-4F29-AA5E-7C729953A41E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Solution.Utils", "Solution.Utils\Solution.Utils.csproj", "{C4671495-8C95-4F29-AA5E-7C729953A41E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils.Console", "Solution.Utils.Console\Solution.Utils.Console.csproj", "{9EF9F088-E916-41C6-B96C-F6F69490B8F0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Solution.Utils.Console", "Solution.Utils.Console\Solution.Utils.Console.csproj", "{9EF9F088-E916-41C6-B96C-F6F69490B8F0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils.Infrastracture", "Solution.Utils.Infrastracture\Solution.Utils.Infrastracture.csproj", "{B03962DF-B774-4856-8354-C2CD2B10195C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Solution.Utils.Infrastracture", "Solution.Utils.Infrastracture\Solution.Utils.Infrastracture.csproj", "{B03962DF-B774-4856-8354-C2CD2B10195C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils.Net5", "Solution.Utils.Net5\Solution.Utils.Net5.csproj", "{281B141B-F3C7-4446-B29D-1C22AB520B57}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Solution.Utils.Net5", "Solution.Utils.Net5\Solution.Utils.Net5.csproj", "{281B141B-F3C7-4446-B29D-1C22AB520B57}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils.Net4", "Solution.Utils.Net4\Solution.Utils.Net4.csproj", "{1785E8F8-05B6-4692-BF42-69209F263777}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Solution.Utils.Net4", "Solution.Utils.Net4\Solution.Utils.Net4.csproj", "{1785E8F8-05B6-4692-BF42-69209F263777}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solution.Utils.ConsoleNet461", "Solution.Utils.ConsoleNet461\Solution.Utils.ConsoleNet461.csproj", "{C10C2EF7-5C37-4988-BFE4-86CB550F82C2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{1785E8F8-05B6-4692-BF42-69209F263777}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1785E8F8-05B6-4692-BF42-69209F263777}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1785E8F8-05B6-4692-BF42-69209F263777}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C10C2EF7-5C37-4988-BFE4-86CB550F82C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C10C2EF7-5C37-4988-BFE4-86CB550F82C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C10C2EF7-5C37-4988-BFE4-86CB550F82C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C10C2EF7-5C37-4988-BFE4-86CB550F82C2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -26,7 +26,7 @@ namespace Solution.Utils.Net4
 
         public void Dispose()
         {
-            _context.Dispose();
+            _context?.Dispose();
             _context = null;
         }
     }

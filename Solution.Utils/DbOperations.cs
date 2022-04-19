@@ -8,7 +8,12 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using System.Data;
+#if NETSTANDARD2_0
 using Microsoft.Data.SqlClient;
+#elif NET461 
+using System.Data.SqlClient;
+#endif
 using Solution.Utils;
 using Solution.Utils.Infrastracture;
 using Solution.Utils.Model;
@@ -370,6 +375,7 @@ namespace Solution.Utils.DbOperations
                     opt.Transaction = options.Transaction;
                 });
             }
+
 
             using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
             {
