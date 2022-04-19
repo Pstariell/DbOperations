@@ -811,15 +811,15 @@ namespace Solution.Utils.DbOperations
                 //Skip Fields non contenute
                 if (excludeColumns != null || includeColumns != null || primaryKeysFields != null)
                 {
-                    if (excludeFields.Any() && !excludeFields.Contains(fieldinfo.Name)) continue;
-                    else if (includeFields.Any() && !includeFields.Contains(fieldinfo.Name)) continue;
-                    else if (primaryKeysFields.Any() && primaryKeysFields.Contains(fieldinfo.Name) && !exludeprimaryKeysFields.Contains(fieldinfo.Name))
+                    if (primaryKeysFields.Any() && primaryKeysFields.Contains(fieldinfo.Name) && !exludeprimaryKeysFields.Contains(fieldinfo.Name))
                     {
                         pk = true;
                         order = indexPK;
                         indexPK += 1;
                         skipPK = true;
-                    };
+                    }
+                    else if (excludeFields.Any() && !excludeFields.Contains(fieldinfo.Name)) continue;
+                    else if (includeFields.Any() && !includeFields.Contains(fieldinfo.Name)) continue;
                 }
 
                 //PrimaryKey Attribute 
