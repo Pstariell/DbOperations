@@ -2,6 +2,7 @@
 
 	<PropertyGroup>
 		<TargetFrameworks>net461</TargetFrameworks>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 	</PropertyGroup>
 
 	<ItemGroup>

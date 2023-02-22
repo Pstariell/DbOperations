@@ -46,22 +46,22 @@ namespace Solution.Utils.ConsoleNet461
                     listToBulk.Add(new entityToCreate() { id = i, data = (i + 100).ToString() });
                 }
 
-                db.Connection.BulkUpdateWithResult<entityToCreate, entityTable>(listToBulk, opt =>
-                {
-                    opt.tableName = "tblTest";
-                    opt.primaryKeys = c => new { c.id };
-                    opt.joinColumns = c => new { c.id };
-                    opt.fieldsToUpdate = c => new { c.data };
-                }).ToList()
-                    .ForEach(s => System.Console.WriteLine(JsonConvert.SerializeObject(s)));
+                //db.Connection.BulkUpdateWithResult<entityToCreate, entityTable>(listToBulk, opt =>
+                //{
+                //    opt.tableName = "tblTest";
+                //    opt.primaryKeys = c => new { c.id };
+                //    opt.joinColumns = c => new { c.id };
+                //    opt.fieldsToUpdate = c => new { c.data };
+                //}).ToList()
+                //    .ForEach(s => System.Console.WriteLine(JsonConvert.SerializeObject(s)));
 
-                //db.Connection.BulkInsertWithReturn(listToBulk, opt =>
-                //    {
-                //        opt.tableName = "tblTest";
-                //        opt.createTableIfNotExist = true;
-                //        opt.primaryKeys = c => new { c.id };
-                //    }).ToList()
-                //    .ForEach(s => System.Console.WriteLine(s.id));
+                db.Connection.BulkInsertWithResult(listToBulk, opt =>
+                    {
+                        opt.tableName = "tblTest";
+                        opt.createTableIfNotExist = true;
+                        opt.primaryKeys = c => new { c.id };
+                    }).ToList()
+                    .ForEach(s => System.Console.WriteLine(s.id));
             }
         }
     }
