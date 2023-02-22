@@ -9,7 +9,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Data;
-#if NETSTANDARD2_0
+#if NETSTANDARD2_0_OR_GREATER
 using Microsoft.Data.SqlClient;
 #elif NET461 
 using System.Data.SqlClient;
@@ -17,7 +17,7 @@ using System.Data.SqlClient;
 using Solution.Utils;
 using Solution.Utils.Infrastracture;
 using Solution.Utils.Model;
-
+using System.Collections;
 
 namespace Solution.Utils.DbOperations
 {
@@ -218,14 +218,34 @@ namespace Solution.Utils.DbOperations
             }
         }
 
-        private static List<T> DataReaderMapToList<T>(IDataReader dr)
+        public static IEnumerable<dynamic> DataReaderMapToDynamic(this IDataReader dr)
+        {
+            var names = Enumerable.Range(0, dr.FieldCount).Select(dr.GetName).ToList();
+            foreach (IDataRecord record in dr as IEnumerable)
+            {
+                var expando = new ExpandoObject() as IDictionary<string, object>;
+                foreach (var name in names)
+                    expando[name] = record[name];
+
+                yield return expando;
+            }
+        }
+
+
+        public static List<T> DataReaderMapTo<T>(this IDataReader dr) where T : class, new()
         {
             List<T> list = new List<T>();
-            T obj = default(T);
+            T obj = new T();
+            List<PropertyInfo> props = obj.GetType().GetProperties().AsEnumerable()
+                .Where(p =>
+                    Enumerable.Range(0, dr.FieldCount).Any(i =>
+                        string.Equals(dr.GetName(i), p.Name, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
             while (dr.Read())
             {
-                obj = Activator.CreateInstance<T>();
-                foreach (PropertyInfo prop in obj.GetType().GetProperties())
+                obj = new T();
+                foreach (PropertyInfo prop in props)
                 {
                     if (!object.Equals(dr[prop.Name], DBNull.Value))
                     {
@@ -237,9 +257,9 @@ namespace Solution.Utils.DbOperations
             return list;
         }
 
-        private static IEnumerable<T> ExecuteCommand<T>(IDbOperationOptions options, string command)
+        private static IEnumerable<T> ExecuteCommand<T>(IDbOperationOptions options, string command) where T : class, new()
         {
-            var result = new List<T>();
+            var result = Enumerable.Empty<T>();
             if (options.Connection.State == ConnectionState.Closed) options.Connection.Open();
 
             bool internalTransaction = false;
@@ -258,7 +278,7 @@ namespace Solution.Utils.DbOperations
                     cmd.CommandText = command;
                     using (var reader = cmd.ExecuteReader())
                     {
-                        result = DataReaderMapToList<T>(reader);
+                        result = reader.DataReaderMapTo<T>();
                     }
                 }
 
@@ -310,6 +330,8 @@ namespace Solution.Utils.DbOperations
         public static void BulkInsert<TSource>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
         {
             var opts = new BulkInsertOptions<TSource>();
+            if (conn.State == ConnectionState.Closed) conn.Open();
+
             opts.Connection = conn;
             action(opts);
 
@@ -376,7 +398,6 @@ namespace Solution.Utils.DbOperations
                 });
             }
 
-
             using (SqlBulkCopy bulkCopy = new SqlBulkCopy(options.Connection as SqlConnection, SqlBulkCopyOptions.KeepNulls & SqlBulkCopyOptions.KeepIdentity, options.Transaction as SqlTransaction))
             {
                 bulkCopy.DestinationTableName = $"{options.tableName}";
@@ -393,7 +414,7 @@ namespace Solution.Utils.DbOperations
             }
         }
 
-        public static IEnumerable<TSource> BulkInsertWithResult<TSource>(this IDbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action)
+        public static IEnumerable<TSource> BulkInsertWithResult<TSource>(this IDbConnection connection, IEnumerable<TSource> data, Action<IBulkInsertOptions<TSource>> action) where TSource : class, new()
         {
             var opts = new BulkInsertOptions<TSource>();
             opts.Connection = connection;
@@ -423,7 +444,7 @@ namespace Solution.Utils.DbOperations
             }
         }
 
-        private static IEnumerable<TSource> BulkInsertWithResult<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options)
+        private static IEnumerable<TSource> BulkInsertWithResult<TSource>(IEnumerable<TSource> data, IBulkInsertOptions<TSource> options) where TSource : class, new()
         {
             if (string.IsNullOrEmpty(options.tableName))
             {
@@ -616,7 +637,7 @@ namespace Solution.Utils.DbOperations
             ExecuteCommand(options, query);
         }
 
-        public static IEnumerable<TRes> BulkUpdateWithResult<TContext, TSource, TRes>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        public static IEnumerable<TRes> BulkUpdateWithResult<TContext, TSource, TRes>(this IDatabase<TContext> context, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action) where TSource : class, new() where TRes : class, new()
         {
             var opts = new BulkUpdateOptions<TSource>();
             action(opts);
@@ -641,13 +662,13 @@ namespace Solution.Utils.DbOperations
             return result;
         }
 
-        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action)
+        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(this IDbConnection conn, IEnumerable<TSource> data, Action<IBulkUpdateOptions<TSource>> action) where TSource : class, new() where TRes : class, new()
         {
             var opts = new BulkUpdateOptions<TSource>();
             opts.Connection = conn;
 
             action(opts);
-            IEnumerable<TRes> result = new List<TRes>();
+            IEnumerable<TRes> result = Enumerable.Empty<TRes>();
             if (opts.Connection.State == ConnectionState.Closed) opts.Connection.Open();
 
             bool internalTransaction = false;
@@ -669,7 +690,7 @@ namespace Solution.Utils.DbOperations
                 throw;
             }
         }
-        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(IEnumerable<TSource> data, IBulkUpdateOptions<TSource> options)
+        public static IEnumerable<TRes> BulkUpdateWithResult<TSource, TRes>(IEnumerable<TSource> data, IBulkUpdateOptions<TSource> options) where TSource : class, new() where TRes : class, new()
         {
             string tempTable = $"{options.tableName}_{DateTime.Now:yyyyMMddHHmmss}";
             string joinParams = "";
@@ -824,7 +845,7 @@ namespace Solution.Utils.DbOperations
                         indexPK += 1;
                         skipPK = true;
                     }
-                    else if (excludeFields.Any() && !excludeFields.Contains(fieldinfo.Name)) continue;
+                    else if (excludeFields.Any() && excludeFields.Contains(fieldinfo.Name)) continue;
                     else if (includeFields.Any() && !includeFields.Contains(fieldinfo.Name)) continue;
                 }
 
